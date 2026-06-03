@@ -120,15 +120,15 @@ APP_NAME="Lectura Medidor API"
 APP_VERSION="0.2.0"
 APP_DEBUG=true
 
-POSTGRES_USER=lectura_user
-POSTGRES_PASSWORD=lectura_pass
+POSTGRES_USER=<tu-usuario>
+POSTGRES_PASSWORD=<tu-password>
 POSTGRES_SERVER=localhost
 POSTGRES_PORT=5432
-POSTGRES_DB=lectura_medidor
+POSTGRES_DB=<tu-base-de-datos>
 
-DATABASE_URL=postgresql+asyncpg://lectura_user:lectura_pass@localhost:5432/lectura_medidor
+DATABASE_URL=postgresql+asyncpg://<tu-usuario>:<tu-password>@localhost:5432/<tu-base-de-datos>
 
-JWT_SECRET_KEY=dev-secret-change-in-production
+JWT_SECRET_KEY=<tu-jwt-secret>
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
@@ -500,11 +500,11 @@ alembic downgrade -1
 | `APP_NAME`                       | Nombre de la aplicación                  | Lectura Medidor API              |
 | `APP_VERSION`                    | Versión                                  | 0.2.0                            |
 | `APP_DEBUG`                      | Modo debug                               | false                            |
-| `POSTGRES_USER`                  | Usuario PostgreSQL                       | lectura_user                     |
-| `POSTGRES_PASSWORD`              | Contraseña PostgreSQL                    | lectura_pass                     |
+| `POSTGRES_USER`                  | Usuario PostgreSQL                       | `<tu-usuario>`                   |
+| `POSTGRES_PASSWORD`              | Contraseña PostgreSQL                    | `<tu-password>`                   |
 | `POSTGRES_SERVER`                | Host PostgreSQL                          | localhost                        |
 | `POSTGRES_PORT`                  | Puerto PostgreSQL                        | 5432                             |
-| `POSTGRES_DB`                    | Base de datos                            | lectura_medidor                  |
+| `POSTGRES_DB`                    | Base de datos                            | `<tu-base-de-datos>`             |
 | `DATABASE_URL`                   | URL completa (opcional)                  | construida automáticamente       |
 | `DB_POOL_SIZE`                   | Pool de conexiones                       | 5                                |
 | `DB_MAX_OVERFLOW`                | Overflow del pool                        | 10                               |
