@@ -291,11 +291,12 @@ Formato JSON estructurado con rotación diaria. Cada línea incluye contexto de 
 
 | Método | Ruta                                              | Roles                 | Descripción                                    |
 |--------|---------------------------------------------------|-----------------------|------------------------------------------------|
-| GET    | `/historial-lecturas/`                            | cualquiera            | Listar (filtros: nuis, ruta_lectura, nombre)   |
+| GET    | `/historial-lecturas/`                            | cualquiera            | Listar paginado (default limit=10, resp: `{total, items}`). Filtros: nuis, ruta_lectura, nombre |
 | GET    | `/historial-lecturas/{id_lectura}`                | cualquiera            | Detalle                                        |
 | PATCH  | `/historial-lecturas/{id_lectura}`                | lector, admin, supervisor | Actualizar (lectura, consumo, estado, etc)  |
 | POST   | `/historial-lecturas/{id_lectura}/fotos`          | lector, admin, supervisor | Subir fotos (multipart, máx 5, JPG/PNG/WebP) |
 | DELETE | `/historial-lecturas/{id_lectura}/fotos`          | lector, admin, supervisor | Eliminar fotos (query: filenames)           |
+| POST   | `/historial-lecturas/import`                      | admin, supervisor     | Importar CSV (reemplaza todo). Delimitador auto-detectado (`;` o `,`). Mapea columnas por nombre del modelo |
 
 ### Sincronización (`/sync`)
 
@@ -360,6 +361,20 @@ El endpoint `POST /sync/bulk` puede devolver:
 - Requiere auth (lector, admin, supervisor)
 
 Los archivos subidos se sirven estáticamente desde `GET /uploads/historial-lecturas/{id_predio}/{filename}`.
+
+---
+
+### POST `/historial-lecturas/import`
+
+Importa un archivo CSV a la tabla `historial_lecturas` reemplazando todos los registros existentes.
+
+- **Content-Type**: `multipart/form-data`
+- **Body**: `file` (archivo `.csv`)
+- **Delimitador**: auto-detectado (`;` o `,`)
+- **Codificación**: UTF-8 BOM o latin-1
+- **Columnas**: debe incluir `id_lectura` (PK). El resto de columnas se mapean automáticamente por nombre al modelo. Campos vacíos → `NULL`. Columnas que no existen en el modelo se ignoran.
+- **Tipos**: `lectura_ant`, `lectura`, `consumo`, `promedio`, `consumo_1/2/3` se convierten a `float`. `fecha` se convierte a `date` (ISO).
+- **Respuesta**: `{ "creados": N, "errores": N, "total": N, "detalles": [...] }`
 
 ---
 
