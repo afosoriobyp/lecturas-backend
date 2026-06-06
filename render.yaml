@@ -16,7 +16,6 @@ services:
       - key: API_PREFIX
         value: ""
       - key: DATABASE_URL
-        sync: false
         value: "postgresql+asyncpg://usuario:password@host.supabase.co:5432/postgres"
       - key: JWT_SECRET_KEY
         generateValue: true
