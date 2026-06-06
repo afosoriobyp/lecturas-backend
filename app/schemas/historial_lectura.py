@@ -52,6 +52,11 @@ class HistorialLecturaOut(BaseModel):
         return None
 
 
+class HistorialLecturaListOut(BaseModel):
+    total: int
+    items: list[HistorialLecturaOut]
+
+
 class HistorialLecturaUpdate(BaseModel):
     lectura: float | None = None
     consumo: float | None = None

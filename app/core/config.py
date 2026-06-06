@@ -20,12 +20,12 @@ class Settings(BaseSettings):
     APP_DEBUG: bool = False
     API_PREFIX: str = ""
 
-    # PostgreSQL async
-    POSTGRES_USER: str = "lectura_user"
-    POSTGRES_PASSWORD: str = "lectura_pass"
+    # PostgreSQL async — sobrescribir vía .env
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "lectura_medidor"
+    POSTGRES_DB: str = ""
     DATABASE_URL: PostgresDsn | str = ""
 
     # Pool tuning para entorno local
@@ -40,14 +40,19 @@ class Settings(BaseSettings):
         if v and isinstance(v, str) and v.startswith("postgresql"):
             return v
         values = info.data
+        user = values.get("POSTGRES_USER")
+        password = values.get("POSTGRES_PASSWORD")
+        db = values.get("POSTGRES_DB")
+        if not user or not password or not db:
+            return ""
         return str(
             PostgresDsn.build(
                 scheme="postgresql+asyncpg",
-                username=values.get("POSTGRES_USER"),
-                password=values.get("POSTGRES_PASSWORD"),
+                username=user,
+                password=password,
                 host=values.get("POSTGRES_SERVER"),
                 port=values.get("POSTGRES_PORT"),
-                path=values.get("POSTGRES_DB") or "",
+                path=db,
             )
         )
 

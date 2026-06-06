@@ -120,15 +120,15 @@ APP_NAME="Lectura Medidor API"
 APP_VERSION="0.2.0"
 APP_DEBUG=true
 
-POSTGRES_USER=lectura_user
-POSTGRES_PASSWORD=lectura_pass
+POSTGRES_USER=<tu-usuario>
+POSTGRES_PASSWORD=<tu-password>
 POSTGRES_SERVER=localhost
 POSTGRES_PORT=5432
-POSTGRES_DB=lectura_medidor
+POSTGRES_DB=<tu-base-de-datos>
 
-DATABASE_URL=postgresql+asyncpg://lectura_user:lectura_pass@localhost:5432/lectura_medidor
+DATABASE_URL=postgresql+asyncpg://<tu-usuario>:<tu-password>@localhost:5432/<tu-base-de-datos>
 
-JWT_SECRET_KEY=dev-secret-change-in-production
+JWT_SECRET_KEY=<tu-jwt-secret>
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
@@ -291,11 +291,12 @@ Formato JSON estructurado con rotación diaria. Cada línea incluye contexto de 
 
 | Método | Ruta                                              | Roles                 | Descripción                                    |
 |--------|---------------------------------------------------|-----------------------|------------------------------------------------|
-| GET    | `/historial-lecturas/`                            | cualquiera            | Listar (filtros: nuis, ruta_lectura, nombre)   |
+| GET    | `/historial-lecturas/`                            | cualquiera            | Listar paginado (default limit=10, resp: `{total, items}`). Filtros: nuis, ruta_lectura, nombre |
 | GET    | `/historial-lecturas/{id_lectura}`                | cualquiera            | Detalle                                        |
 | PATCH  | `/historial-lecturas/{id_lectura}`                | lector, admin, supervisor | Actualizar (lectura, consumo, estado, etc)  |
 | POST   | `/historial-lecturas/{id_lectura}/fotos`          | lector, admin, supervisor | Subir fotos (multipart, máx 5, JPG/PNG/WebP) |
 | DELETE | `/historial-lecturas/{id_lectura}/fotos`          | lector, admin, supervisor | Eliminar fotos (query: filenames)           |
+| POST   | `/historial-lecturas/import`                      | admin, supervisor     | Importar CSV (reemplaza todo). Delimitador auto-detectado (`;` o `,`). Mapea columnas por nombre del modelo |
 
 ### Sincronización (`/sync`)
 
@@ -360,6 +361,20 @@ El endpoint `POST /sync/bulk` puede devolver:
 - Requiere auth (lector, admin, supervisor)
 
 Los archivos subidos se sirven estáticamente desde `GET /uploads/historial-lecturas/{id_predio}/{filename}`.
+
+---
+
+### POST `/historial-lecturas/import`
+
+Importa un archivo CSV a la tabla `historial_lecturas` reemplazando todos los registros existentes.
+
+- **Content-Type**: `multipart/form-data`
+- **Body**: `file` (archivo `.csv`)
+- **Delimitador**: auto-detectado (`;` o `,`)
+- **Codificación**: UTF-8 BOM o latin-1
+- **Columnas**: debe incluir `id_lectura` (PK). El resto de columnas se mapean automáticamente por nombre al modelo. Campos vacíos → `NULL`. Columnas que no existen en el modelo se ignoran.
+- **Tipos**: `lectura_ant`, `lectura`, `consumo`, `promedio`, `consumo_1/2/3` se convierten a `float`. `fecha` se convierte a `date` (ISO).
+- **Respuesta**: `{ "creados": N, "errores": N, "total": N, "detalles": [...] }`
 
 ---
 
@@ -500,11 +515,11 @@ alembic downgrade -1
 | `APP_NAME`                       | Nombre de la aplicación                  | Lectura Medidor API              |
 | `APP_VERSION`                    | Versión                                  | 0.2.0                            |
 | `APP_DEBUG`                      | Modo debug                               | false                            |
-| `POSTGRES_USER`                  | Usuario PostgreSQL                       | lectura_user                     |
-| `POSTGRES_PASSWORD`              | Contraseña PostgreSQL                    | lectura_pass                     |
+| `POSTGRES_USER`                  | Usuario PostgreSQL                       | `<tu-usuario>`                   |
+| `POSTGRES_PASSWORD`              | Contraseña PostgreSQL                    | `<tu-password>`                   |
 | `POSTGRES_SERVER`                | Host PostgreSQL                          | localhost                        |
 | `POSTGRES_PORT`                  | Puerto PostgreSQL                        | 5432                             |
-| `POSTGRES_DB`                    | Base de datos                            | lectura_medidor                  |
+| `POSTGRES_DB`                    | Base de datos                            | `<tu-base-de-datos>`             |
 | `DATABASE_URL`                   | URL completa (opcional)                  | construida automáticamente       |
 | `DB_POOL_SIZE`                   | Pool de conexiones                       | 5                                |
 | `DB_MAX_OVERFLOW`                | Overflow del pool                        | 10                               |

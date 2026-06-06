@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
-from sqlalchemy import select, cast, Integer, text
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, Response
+from sqlalchemy import cast, delete, func, Integer, select, text
 
 from app.api.dependencies import SessionDep
 from app.core.config import settings
 from app.core.exceptions import ForbiddenException, NotFoundException
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.models.historial_lectura import HistorialLectura
 from app.models.no_read_reason import NoReadReason
 from app.models.user import User
-from app.schemas.historial_lectura import HistorialLecturaOut, HistorialLecturaUpdate
+from app.schemas.historial_lectura import HistorialLecturaListOut, HistorialLecturaOut, HistorialLecturaUpdate
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/historial-lecturas", tags=["Historial Lecturas"])
@@ -37,14 +39,80 @@ def validar_consumo(consumo: float, promedio: float | None) -> dict:
         return {"categoria": "Consumo Elevado", "porcentaje": round(pct, 2)}
 
 
-@router.get("/", response_model=list[HistorialLecturaOut])
+@router.get("/", response_model=HistorialLecturaListOut)
 async def list_historial_lecturas(
     session: SessionDep,
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=5000),
+    limit: int = Query(10, ge=1, le=5000),
     nuis: str | None = Query(None),
     ruta_lectura: str | None = Query(None),
+    nom_suscriptor: str | None = Query(None),
+):
+    count_query = select(func.count(HistorialLectura.id_lectura))
+    data_query = select(HistorialLectura)
+
+    if current_user.rol == "lector" and current_user.id_tercero:
+        count_query = count_query.where(HistorialLectura.id_tercero == current_user.id_tercero)
+        data_query = data_query.where(HistorialLectura.id_tercero == current_user.id_tercero)
+
+    if nuis:
+        count_query = count_query.where(HistorialLectura.nuis == nuis)
+        data_query = data_query.where(HistorialLectura.nuis == nuis)
+    if ruta_lectura:
+        count_query = count_query.where(HistorialLectura.ruta_lectura == ruta_lectura)
+        data_query = data_query.where(HistorialLectura.ruta_lectura == ruta_lectura)
+    if nom_suscriptor:
+        count_query = count_query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
+        data_query = data_query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
+
+    total_result = await session.execute(count_query)
+    total = total_result.scalar() or 0
+
+    data_query = data_query.order_by(cast(HistorialLectura.orden_lectura, Integer)).offset(skip).limit(limit)
+    result = await session.execute(data_query)
+    items = list(result.scalars().all())
+
+    return HistorialLecturaListOut(total=total, items=items)
+
+
+CSV_HEADERS = [
+    "LECTURA_ANT", "LECTURA", "CONSUMO", "SOLUCION_CONSUMO", "PROMEDIO",
+    "ID_NOVEDAD", "NOM_SUSCRIPTOR", "SERIAL_MEDIDOR", "NOM_MARCA",
+    "ID_CICLO", "ORDEN_LECTURA", "RUTA_LECTURA",
+    "CONSUMO_1", "CONSUMO_2", "CONSUMO_3",
+]
+
+COLUMN_MAP = {
+    "LECTURA_ANT": "lectura_ant",
+    "LECTURA": "lectura",
+    "CONSUMO": "consumo",
+    "SOLUCION_CONSUMO": "solucion_consumo",
+    "PROMEDIO": "promedio",
+    "ID_NOVEDAD": "id_novedad",
+    "NOM_SUSCRIPTOR": "nom_suscriptor",
+    "SERIAL_MEDIDOR": "serial_medidor",
+    "NOM_MARCA": "nom_marca",
+    "ID_CICLO": "id_ciclo",
+    "ORDEN_LECTURA": "orden_lectura",
+    "RUTA_LECTURA": "ruta_lectura",
+    "CONSUMO_1": "consumo_1",
+    "CONSUMO_2": "consumo_2",
+    "CONSUMO_3": "consumo_3",
+}
+
+LOOKUP_FIELDS = ["ID_CICLO", "ORDEN_LECTURA", "RUTA_LECTURA"]
+
+IMPORT_COLUMNS = ["LECTURA", "CONSUMO", "SOLUCION_CONSUMO", "ID_NOVEDAD"]
+
+
+@router.get("/export")
+async def export_historial_lecturas_csv(
+    session: SessionDep,
+    current_user: User = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(5000, ge=1, le=50000),
+    nuis: str | None = Query(None),
     nom_suscriptor: str | None = Query(None),
 ):
     query = select(HistorialLectura)
@@ -54,14 +122,41 @@ async def list_historial_lecturas(
 
     if nuis:
         query = query.where(HistorialLectura.nuis == nuis)
-    if ruta_lectura:
-        query = query.where(HistorialLectura.ruta_lectura == ruta_lectura)
     if nom_suscriptor:
         query = query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
 
     query = query.order_by(cast(HistorialLectura.orden_lectura, Integer)).offset(skip).limit(limit)
     result = await session.execute(query)
-    return list(result.scalars().all())
+    rows = list(result.scalars().all())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(CSV_HEADERS)
+
+    for r in rows:
+        writer.writerow([
+            r.lectura_ant,
+            r.lectura,
+            r.consumo,
+            r.solucion_consumo,
+            r.promedio,
+            r.id_novedad,
+            r.nom_suscriptor,
+            r.serial_medidor,
+            r.nom_marca,
+            r.id_ciclo,
+            r.orden_lectura,
+            r.ruta_lectura,
+            r.consumo_1,
+            r.consumo_2,
+            r.consumo_3,
+        ])
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=\"historial_lecturas.csv\""},
+    )
 
 
 @router.patch("/{id_lectura}", response_model=HistorialLecturaOut)
@@ -319,3 +414,109 @@ async def delete_fotos(
     )
 
     return {"fotos": reindexed_fotos}
+
+
+@router.post("/import")
+async def import_historial_lecturas_csv(
+    session: SessionDep,
+    current_user: User = Depends(require_roles("admin", "supervisor")),
+    file: UploadFile = File(...),
+):
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="El archivo debe tener extensión .csv")
+
+    content = await file.read()
+    try:
+        decoded = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        decoded = content.decode("latin-1")
+
+    first_line = decoded.splitlines()[0] if decoded.splitlines() else ""
+    delimiter = ";" if ";" in first_line else ","
+    reader = csv.DictReader(io.StringIO(decoded), delimiter=delimiter)
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV vacío o sin encabezados")
+
+    from datetime import date as date_type
+
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="El archivo está vacío")
+
+    model_cols = {c.name for c in HistorialLectura.__table__.columns}
+    float_cols = {"lectura_ant", "lectura", "consumo", "promedio", "consumo_1", "consumo_2", "consumo_3"}
+
+    await session.execute(delete(HistorialLectura))
+
+    creados = 0
+    errores = 0
+    detalles: list[str] = []
+
+    for idx, row in enumerate(rows, start=1):
+        try:
+            id_lectura_val = row.get("id_lectura", "").strip()
+            if not id_lectura_val:
+                raise ValueError("'id_lectura' es requerido")
+            data: dict[str, object] = {"id_lectura": id_lectura_val}
+            for header in reader.fieldnames:
+                key = header.strip()
+                if key not in model_cols:
+                    continue
+                val = row.get(header, "").strip()
+                if not val:
+                    data[key] = None
+                elif key in float_cols:
+                    try:
+                        data[key] = float(val)
+                    except ValueError:
+                        raise ValueError(f"'{header}' debe ser un valor numérico")
+                elif key == "fecha":
+                    try:
+                        data[key] = date_type.fromisoformat(val)
+                    except ValueError:
+                        raise ValueError(f"'{header}' debe ser fecha ISO (YYYY-MM-DD)")
+                else:
+                    data[key] = val
+
+            historial = HistorialLectura(**data)
+            session.add(historial)
+            creados += 1
+
+        except Exception as exc:
+            errores += 1
+            detalles.append(f"fila {idx}: {exc}")
+
+    if creados > 0:
+        await session.flush()
+        await log_action(
+            session,
+            accion="historial_lectura.import_csv",
+            entidad_tipo="historial_lectura",
+            actor_id=str(current_user.id),
+            detalle={"creados": creados, "errores": errores, "total": len(rows)},
+        )
+
+    return {"creados": creados, "errores": errores, "total": len(rows), "detalles": detalles}
+
+
+@router.delete("/all")
+async def delete_all_historial_lecturas(
+    session: SessionDep,
+    current_user: User = Depends(require_roles("admin", "supervisor")),
+):
+    result = await session.execute(select(HistorialLectura).limit(1))
+    if result.first() is None:
+        return {"eliminados": 0, "message": "No hay registros para eliminar"}
+
+    result = await session.execute(delete(HistorialLectura))
+    count = result.rowcount
+
+    await log_action(
+        session,
+        accion="historial_lectura.delete_all",
+        entidad_tipo="historial_lectura",
+        actor_id=str(current_user.id),
+        detalle={"eliminados": count},
+    )
+
+    return {"eliminados": count, "message": f"Se eliminaron {count} registros"}
