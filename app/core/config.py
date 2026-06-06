@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     DATABASE_URL: PostgresDsn | str = ""
 
     # Pool tuning para entorno local
-    DB_POOL_SIZE: int = 5
-    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_SIZE: int = 3
+    DB_MAX_OVERFLOW: int = 5
     DB_POOL_TIMEOUT: int = 30
     DB_STATEMENT_TIMEOUT_MS: int = 10000
 

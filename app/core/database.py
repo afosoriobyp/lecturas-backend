@@ -22,9 +22,6 @@ engine = create_async_engine(
     pool_timeout=settings.DB_POOL_TIMEOUT,
     connect_args={
         "statement_cache_size": 0,
-        "server_settings": {
-            "statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
-        },
     },
 )
 
