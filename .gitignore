@@ -26,6 +26,7 @@ logs/
 # Database
 *.db
 *.sqlite
+supabase_*.sql
 
 # Docker
 pgdata/

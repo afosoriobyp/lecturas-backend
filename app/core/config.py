@@ -37,7 +37,12 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def assemble_db_url(cls, v: str, info) -> str:
-        if v and isinstance(v, str) and v.startswith("postgresql"):
+        if v and isinstance(v, str) and v.startswith("postgres"):
+            # Render / Supabase usan postgres:// — convertir a postgresql+asyncpg://
+            if v.startswith("postgres://"):
+                v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+            if v.startswith("postgresql://") and "+asyncpg" not in v:
+                v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
             return v
         values = info.data
         user = values.get("POSTGRES_USER")
@@ -63,8 +68,6 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:8000",
         "http://192.168.100.24:3000",
-        "https://2c83-2803-4d20-8101-600-80c3-c4c0-c8ef-edb9.ngrok-free.app",
-        "https://0445-2803-4d20-8101-600-80c3-c4c0-c8ef-edb9.ngrok-free.app",
     ]
 
     # Telegram
