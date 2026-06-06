@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, Response
-from sqlalchemy import cast, delete, Integer, select, text
+from sqlalchemy import cast, delete, func, Integer, select, text
 
 from app.api.dependencies import SessionDep
 from app.core.config import settings
@@ -17,7 +17,7 @@ from app.core.security import get_current_user, require_roles
 from app.models.historial_lectura import HistorialLectura
 from app.models.no_read_reason import NoReadReason
 from app.models.user import User
-from app.schemas.historial_lectura import HistorialLecturaOut, HistorialLecturaUpdate
+from app.schemas.historial_lectura import HistorialLecturaListOut, HistorialLecturaOut, HistorialLecturaUpdate
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/historial-lecturas", tags=["Historial Lecturas"])
@@ -39,31 +39,41 @@ def validar_consumo(consumo: float, promedio: float | None) -> dict:
         return {"categoria": "Consumo Elevado", "porcentaje": round(pct, 2)}
 
 
-@router.get("/", response_model=list[HistorialLecturaOut])
+@router.get("/", response_model=HistorialLecturaListOut)
 async def list_historial_lecturas(
     session: SessionDep,
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=5000),
+    limit: int = Query(10, ge=1, le=5000),
     nuis: str | None = Query(None),
     ruta_lectura: str | None = Query(None),
     nom_suscriptor: str | None = Query(None),
 ):
-    query = select(HistorialLectura)
+    count_query = select(func.count(HistorialLectura.id_lectura))
+    data_query = select(HistorialLectura)
 
     if current_user.rol == "lector" and current_user.id_tercero:
-        query = query.where(HistorialLectura.id_tercero == current_user.id_tercero)
+        count_query = count_query.where(HistorialLectura.id_tercero == current_user.id_tercero)
+        data_query = data_query.where(HistorialLectura.id_tercero == current_user.id_tercero)
 
     if nuis:
-        query = query.where(HistorialLectura.nuis == nuis)
+        count_query = count_query.where(HistorialLectura.nuis == nuis)
+        data_query = data_query.where(HistorialLectura.nuis == nuis)
     if ruta_lectura:
-        query = query.where(HistorialLectura.ruta_lectura == ruta_lectura)
+        count_query = count_query.where(HistorialLectura.ruta_lectura == ruta_lectura)
+        data_query = data_query.where(HistorialLectura.ruta_lectura == ruta_lectura)
     if nom_suscriptor:
-        query = query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
+        count_query = count_query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
+        data_query = data_query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
 
-    query = query.order_by(cast(HistorialLectura.orden_lectura, Integer)).offset(skip).limit(limit)
-    result = await session.execute(query)
-    return list(result.scalars().all())
+    total_result = await session.execute(count_query)
+    total = total_result.scalar() or 0
+
+    data_query = data_query.order_by(cast(HistorialLectura.orden_lectura, Integer)).offset(skip).limit(limit)
+    result = await session.execute(data_query)
+    items = list(result.scalars().all())
+
+    return HistorialLecturaListOut(total=total, items=items)
 
 
 CSV_HEADERS = [
@@ -410,122 +420,83 @@ async def delete_fotos(
 async def import_historial_lecturas_csv(
     session: SessionDep,
     current_user: User = Depends(require_roles("admin", "supervisor")),
-    archivo: UploadFile = File(...),
+    file: UploadFile = File(...),
 ):
-    if not archivo.filename or not archivo.filename.endswith(".csv"):
+    if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="El archivo debe tener extensión .csv")
 
-    content = await archivo.read()
+    content = await file.read()
     try:
         decoded = content.decode("utf-8-sig")
     except UnicodeDecodeError:
         decoded = content.decode("latin-1")
 
-    reader = csv.DictReader(io.StringIO(decoded))
+    first_line = decoded.splitlines()[0] if decoded.splitlines() else ""
+    delimiter = ";" if ";" in first_line else ","
+    reader = csv.DictReader(io.StringIO(decoded), delimiter=delimiter)
     if not reader.fieldnames:
         raise HTTPException(status_code=400, detail="CSV vacío o sin encabezados")
 
-    csv_headers = [h.strip().upper() for h in reader.fieldnames]
+    from datetime import date as date_type
 
-    missing = [h for h in LOOKUP_FIELDS if h not in csv_headers]
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Faltan columnas obligatorias en el CSV: {', '.join(missing)}",
-        )
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="El archivo está vacío")
 
-    detalles: list[str] = []
-    procesados = 0
+    model_cols = {c.name for c in HistorialLectura.__table__.columns}
+    float_cols = {"lectura_ant", "lectura", "consumo", "promedio", "consumo_1", "consumo_2", "consumo_3"}
+
+    await session.execute(delete(HistorialLectura))
+
+    creados = 0
     errores = 0
-    total = 0
+    detalles: list[str] = []
 
-    for idx, row in enumerate(reader, start=1):
-        total += 1
+    for idx, row in enumerate(rows, start=1):
         try:
-            id_ciclo = row.get("ID_CICLO", "").strip()
-            orden_lectura = row.get("ORDEN_LECTURA", "").strip()
-            ruta_lectura = row.get("RUTA_LECTURA", "").strip()
-
-            if not id_ciclo or not orden_lectura or not ruta_lectura:
-                detalles.append(f"fila {idx}: ID_CICLO, ORDEN_LECTURA y RUTA_LECTURA son requeridos")
-                errores += 1
-                continue
-
-            result = await session.execute(
-                select(HistorialLectura).where(
-                    HistorialLectura.id_ciclo == id_ciclo,
-                    HistorialLectura.orden_lectura == orden_lectura,
-                    HistorialLectura.ruta_lectura == ruta_lectura,
-                )
-            )
-            historial = result.scalar_one_or_none()
-
-            if not historial:
-                serial = row.get("SERIAL_MEDIDOR", "").strip()
-                if serial:
-                    result = await session.execute(
-                        select(HistorialLectura).where(
-                            HistorialLectura.serial_medidor == serial,
-                        )
-                    )
-                    historial = result.scalar_one_or_none()
-
-            if not historial:
-                detalles.append(f"fila {idx}: registro no encontrado")
-                errores += 1
-                continue
-
-            update_data: dict[str, object] = {}
-
-            lectura_raw = row.get("LECTURA", "").strip()
-            if lectura_raw:
-                try:
-                    lectura_val = float(lectura_raw)
-                    update_data["lectura"] = lectura_val
-                    lectura_ant = historial.lectura_ant or 0
-                    update_data["consumo"] = lectura_val - lectura_ant
-                except ValueError:
-                    detalles.append(f"fila {idx}: LECTURA inválido '{lectura_raw}'")
-                    errores += 1
+            id_lectura_val = row.get("id_lectura", "").strip()
+            if not id_lectura_val:
+                raise ValueError("'id_lectura' es requerido")
+            data: dict[str, object] = {"id_lectura": id_lectura_val}
+            for header in reader.fieldnames:
+                key = header.strip()
+                if key not in model_cols:
                     continue
+                val = row.get(header, "").strip()
+                if not val:
+                    data[key] = None
+                elif key in float_cols:
+                    try:
+                        data[key] = float(val)
+                    except ValueError:
+                        raise ValueError(f"'{header}' debe ser un valor numérico")
+                elif key == "fecha":
+                    try:
+                        data[key] = date_type.fromisoformat(val)
+                    except ValueError:
+                        raise ValueError(f"'{header}' debe ser fecha ISO (YYYY-MM-DD)")
+                else:
+                    data[key] = val
 
-            consumo_raw = row.get("CONSUMO", "").strip()
-            if consumo_raw and "lectura" not in update_data:
-                try:
-                    update_data["consumo"] = float(consumo_raw)
-                except ValueError:
-                    detalles.append(f"fila {idx}: CONSUMO inválido '{consumo_raw}'")
-                    errores += 1
-                    continue
-
-            solucion_raw = row.get("SOLUCION_CONSUMO", "").strip()
-            if solucion_raw:
-                update_data["solucion_consumo"] = solucion_raw
-
-            id_novedad_raw = row.get("ID_NOVEDAD", "").strip()
-            if id_novedad_raw:
-                update_data["id_novedad"] = id_novedad_raw
-
-            for key, value in update_data.items():
-                setattr(historial, key, value)
-
-            procesados += 1
+            historial = HistorialLectura(**data)
+            session.add(historial)
+            creados += 1
 
         except Exception as exc:
-            detalles.append(f"fila {idx}: error interno - {exc}")
             errores += 1
+            detalles.append(f"fila {idx}: {exc}")
 
-    if procesados > 0:
+    if creados > 0:
         await session.flush()
         await log_action(
             session,
             accion="historial_lectura.import_csv",
             entidad_tipo="historial_lectura",
             actor_id=str(current_user.id),
-            detalle={"procesados": procesados, "errores": errores, "total": total},
+            detalle={"creados": creados, "errores": errores, "total": len(rows)},
         )
 
-    return {"procesados": procesados, "errores": errores, "total": total, "detalles": detalles}
+    return {"creados": creados, "errores": errores, "total": len(rows), "detalles": detalles}
 
 
 @router.delete("/all")
