@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     # FastAPI
-    APP_NAME: str = "Lectura Medidor API"
+    APP_NAME: str = "LecturasMovilApp"
     APP_VERSION: str = "0.2.0"
     APP_DEBUG: bool = False
     API_PREFIX: str = ""

@@ -8,7 +8,7 @@ services:
     dockerContext: .
     envVars:
       - key: APP_NAME
-        value: "Lectura Medidor API"
+        value: "LecturasMovilApp"
       - key: APP_VERSION
         value: "0.2.0"
       - key: APP_DEBUG

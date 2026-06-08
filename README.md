@@ -1,4 +1,4 @@
-# Lectura Medidor API
+# LecturasMovilApp
 
 API REST para el sistema de gestión de lecturas de medidores de agua, construida con **FastAPI** (asíncrono), **SQLAlchemy 2.0** (async), **PostgreSQL** y **JWT**. Soporta sincronización offline/online, subida de fotos, auditoría completa, control de acceso por roles, exportación de datos y **sistema centralizado de errores con trazabilidad**.
 
@@ -116,7 +116,7 @@ pip install -r requirements.txt
 Crear `.env` (ver `.env.example`):
 
 ```env
-APP_NAME="Lectura Medidor API"
+APP_NAME="LecturasMovilApp"
 APP_VERSION="0.2.0"
 APP_DEBUG=true
 
@@ -524,7 +524,7 @@ alembic downgrade -1
 
 | Variable                         | Descripción                              | Default                          |
 |----------------------------------|------------------------------------------|----------------------------------|
-| `APP_NAME`                       | Nombre de la aplicación                  | Lectura Medidor API              |
+| `APP_NAME`                       | Nombre de la aplicación                  | LecturasMovilApp                 |
 | `APP_VERSION`                    | Versión                                  | 0.2.0                            |
 | `APP_DEBUG`                      | Modo debug                               | false                            |
 | `POSTGRES_USER`                  | Usuario PostgreSQL                       | `<tu-usuario>`                   |
