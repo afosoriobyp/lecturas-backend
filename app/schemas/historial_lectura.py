@@ -35,6 +35,8 @@ class HistorialLecturaOut(BaseModel):
     observacion: str | None = None
     fotos: list[str] | None = None
     fotos_pendientes: int | None = None
+    consumo_categoria: str | None = None
+    consumo_porcentaje: float | None = None
 
     @field_validator("fotos", mode="before")
     @classmethod

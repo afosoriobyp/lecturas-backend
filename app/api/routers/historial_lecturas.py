@@ -23,12 +23,20 @@ from app.services.audit import log_action
 router = APIRouter(prefix="/historial-lecturas", tags=["Historial Lecturas"])
 
 
-def validar_consumo(consumo: float, promedio: float | None) -> dict:
+def validar_consumo(consumo: float, promedio: float | None,
+                     consumo_1: float | None = None,
+                     consumo_2: float | None = None,
+                     consumo_3: float | None = None) -> dict:
     if consumo <= 0:
         return {"categoria": "Girado Sentido Contrario", "porcentaje": 0}
-    if not promedio or promedio <= 0:
+    promedio_efectivo = promedio
+    if not promedio_efectivo or promedio_efectivo <= 0:
+        historicos = [c for c in (consumo_1, consumo_2, consumo_3) if c is not None and c > 0]
+        if historicos:
+            promedio_efectivo = sum(historicos) / len(historicos)
+    if not promedio_efectivo or promedio_efectivo <= 0:
         return {"categoria": None, "porcentaje": None}
-    pct = (consumo / promedio) * 100
+    pct = (consumo / promedio_efectivo) * 100
     if pct <= 50:
         return {"categoria": "Consumo Bajo", "porcentaje": round(pct, 2)}
     elif pct <= 100:
@@ -72,6 +80,15 @@ async def list_historial_lecturas(
     data_query = data_query.order_by(cast(HistorialLectura.orden_lectura, Integer)).offset(skip).limit(limit)
     result = await session.execute(data_query)
     items = list(result.scalars().all())
+
+    for item in items:
+        if item.consumo is not None:
+            v = validar_consumo(item.consumo, item.promedio,
+                                consumo_1=item.consumo_1,
+                                consumo_2=item.consumo_2,
+                                consumo_3=item.consumo_3)
+            item.consumo_categoria = v.get("categoria")
+            item.consumo_porcentaje = v.get("porcentaje")
 
     return HistorialLecturaListOut(total=total, items=items)
 
@@ -226,7 +243,12 @@ async def update_historial_lectura(
 
     consumo = historial.consumo
     promedio = historial.promedio
-    validacion = validar_consumo(consumo, promedio) if consumo is not None else {}
+    validacion = {}
+    if consumo is not None:
+        validacion = validar_consumo(consumo, promedio,
+                                     consumo_1=historial.consumo_1,
+                                     consumo_2=historial.consumo_2,
+                                     consumo_3=historial.consumo_3)
 
     await log_action(
         session, accion="historial_lectura.update", entidad_tipo="historial_lectura",
@@ -247,6 +269,9 @@ async def update_historial_lectura(
             },
         )
 
+    historial.consumo_categoria = validacion.get("categoria")
+    historial.consumo_porcentaje = validacion.get("porcentaje")
+
     return historial
 
 
@@ -262,6 +287,15 @@ async def get_historial_lectura(
     historial = result.scalar_one_or_none()
     if not historial:
         raise NotFoundException("HistorialLectura")
+
+    if historial.consumo is not None:
+        validacion = validar_consumo(historial.consumo, historial.promedio,
+                                     consumo_1=historial.consumo_1,
+                                     consumo_2=historial.consumo_2,
+                                     consumo_3=historial.consumo_3)
+        historial.consumo_categoria = validacion.get("categoria")
+        historial.consumo_porcentaje = validacion.get("porcentaje")
+
     return historial
 
 
