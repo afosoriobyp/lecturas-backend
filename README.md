@@ -293,6 +293,7 @@ Formato JSON estructurado con rotación diaria. Cada línea incluye contexto de 
 |--------|---------------------------------------------------|-----------------------|------------------------------------------------|
 | GET    | `/historial-lecturas/`                            | cualquiera            | Listar paginado (default limit=10, resp: `{total, items}`). Filtros: nuis, ruta_lectura, nombre |
 | GET    | `/historial-lecturas/{id_lectura}`                | cualquiera            | Detalle                                        |
+| GET    | `/historial-lecturas/export`                      | admin, auditor        | Exportar todo el historial a CSV o XLSX (sin paginación). Parámetros: `formato` (csv|xlsx), `nuis`, `nom_suscriptor` |
 | PATCH  | `/historial-lecturas/{id_lectura}`                | lector, admin, supervisor | Actualizar (lectura, consumo, estado, etc)  |
 | POST   | `/historial-lecturas/{id_lectura}/fotos`          | lector, admin, supervisor | Subir fotos (multipart, máx 5, JPG/PNG/WebP) |
 | DELETE | `/historial-lecturas/{id_lectura}/fotos`          | lector, admin, supervisor | Eliminar fotos (query: filenames)           |
@@ -361,6 +362,17 @@ El endpoint `POST /sync/bulk` puede devolver:
 - Requiere auth (lector, admin, supervisor)
 
 Los archivos subidos se sirven estáticamente desde `GET /uploads/historial-lecturas/{id_predio}/{filename}`.
+
+---
+
+### GET `/historial-lecturas/export?formato=csv&nuis=&nom_suscriptor=`
+
+Exporta todos los registros de `historial_lecturas` a CSV o XLSX, aplicando filtros opcionales. Sin paginación.
+
+- **Parámetros**: `formato` (requerido: `csv` o `xlsx`), `nuis` (búsqueda parcial), `nom_suscriptor` (búsqueda parcial)
+- **Autenticación**: JWT (cookie/header), roles `admin` o `auditor`
+- **Columnas exportadas**: `id_lectura, nom_aps, nom_ciudad, id_tercero, nom_lector, id_predio, nuis, nom_barrio, direccion, fecha, lectura_ant, lectura, consumo, solucion_consumo, promedio, id_novedad, nom_suscriptor, serial_medidor, nom_marca, id_ciclo, orden_lectura, ruta_lectura, consumo_1, consumo_2, consumo_3, status, observacion, fotos, fotos_pendientes`
+- **Headers**: `Content-Type: text/csv` (o `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`), `Content-Disposition: attachment; filename="historial-lecturas-YYYY-MM-DD.csv"`
 
 ---
 

@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import os
+from datetime import date
 from pathlib import Path
 from typing import List
 
@@ -127,56 +128,74 @@ LOOKUP_FIELDS = ["ID_CICLO", "ORDEN_LECTURA", "RUTA_LECTURA"]
 IMPORT_COLUMNS = ["LECTURA", "CONSUMO", "SOLUCION_CONSUMO", "ID_NOVEDAD"]
 
 
+EXPORT_COLUMNS = [
+    "id_lectura", "nom_aps", "nom_ciudad", "id_tercero", "nom_lector",
+    "id_predio", "nuis", "nom_barrio", "direccion", "fecha",
+    "lectura_ant", "lectura", "consumo", "solucion_consumo", "promedio",
+    "id_novedad", "nom_suscriptor", "serial_medidor", "nom_marca",
+    "id_ciclo", "orden_lectura", "ruta_lectura",
+    "consumo_1", "consumo_2", "consumo_3",
+    "status", "observacion", "fotos", "fotos_pendientes",
+]
+
+
+def _generate_csv(rows: list[HistorialLectura]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(EXPORT_COLUMNS)
+    for r in rows:
+        writer.writerow([getattr(r, col) for col in EXPORT_COLUMNS])
+    return output.getvalue()
+
+
+def _generate_xlsx(rows: list[HistorialLectura]) -> bytes:
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Historial Lecturas"
+    ws.append(EXPORT_COLUMNS)
+    for r in rows:
+        ws.append([getattr(r, col) for col in EXPORT_COLUMNS])
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
 @router.get("/export")
-async def export_historial_lecturas_csv(
+async def export_historial_lecturas(
     session: SessionDep,
-    current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(5000, ge=1, le=50000),
+    current_user: User = Depends(require_roles("admin", "auditor")),
+    formato: str = Query(pattern=r"^(csv|xlsx)$"),
     nuis: str | None = Query(None),
     nom_suscriptor: str | None = Query(None),
 ):
     query = select(HistorialLectura)
 
-    if current_user.rol == "lector" and current_user.id_tercero:
-        query = query.where(HistorialLectura.id_tercero == current_user.id_tercero)
-
     if nuis:
-        query = query.where(HistorialLectura.nuis == nuis)
+        query = query.where(HistorialLectura.nuis.ilike(f"%{nuis}%"))
     if nom_suscriptor:
         query = query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
 
-    query = query.order_by(cast(HistorialLectura.orden_lectura, Integer)).offset(skip).limit(limit)
+    query = query.order_by(cast(HistorialLectura.orden_lectura, Integer))
     result = await session.execute(query)
     rows = list(result.scalars().all())
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(CSV_HEADERS)
+    today = date.today().isoformat()
 
-    for r in rows:
-        writer.writerow([
-            r.lectura_ant,
-            r.lectura,
-            r.consumo,
-            r.solucion_consumo,
-            r.promedio,
-            r.id_novedad,
-            r.nom_suscriptor,
-            r.serial_medidor,
-            r.nom_marca,
-            r.id_ciclo,
-            r.orden_lectura,
-            r.ruta_lectura,
-            r.consumo_1,
-            r.consumo_2,
-            r.consumo_3,
-        ])
+    if formato == "csv":
+        content = _generate_csv(rows)
+        media_type = "text/csv"
+        filename = f"historial-lecturas-{today}.csv"
+    else:
+        content = _generate_xlsx(rows)
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        filename = f"historial-lecturas-{today}.xlsx"
 
     return Response(
-        content=output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=\"historial_lecturas.csv\""},
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
