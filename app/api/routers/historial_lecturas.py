@@ -53,9 +53,10 @@ async def list_historial_lecturas(
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=5000),
-    nuis: str | None = Query(None),
+    nuis: str | None = Query(None, description="Buscar por NIUS/medidor (búsqueda parcial)"),
     ruta_lectura: str | None = Query(None),
     nom_suscriptor: str | None = Query(None),
+    id_predio: str | None = Query(None, description="Buscar por ID de predio (búsqueda parcial)"),
 ):
     count_query = select(func.count(HistorialLectura.id_lectura))
     data_query = select(HistorialLectura)
@@ -65,8 +66,11 @@ async def list_historial_lecturas(
         data_query = data_query.where(HistorialLectura.id_tercero == current_user.id_tercero)
 
     if nuis:
-        count_query = count_query.where(HistorialLectura.nuis == nuis)
-        data_query = data_query.where(HistorialLectura.nuis == nuis)
+        count_query = count_query.where(HistorialLectura.nuis.ilike(f"%{nuis}%"))
+        data_query = data_query.where(HistorialLectura.nuis.ilike(f"%{nuis}%"))
+    if id_predio:
+        count_query = count_query.where(HistorialLectura.id_predio.ilike(f"%{id_predio}%"))
+        data_query = data_query.where(HistorialLectura.id_predio.ilike(f"%{id_predio}%"))
     if ruta_lectura:
         count_query = count_query.where(HistorialLectura.ruta_lectura == ruta_lectura)
         data_query = data_query.where(HistorialLectura.ruta_lectura == ruta_lectura)
