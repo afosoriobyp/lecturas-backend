@@ -27,7 +27,8 @@ services:
       - key: JWT_REFRESH_TOKEN_EXPIRE_DAYS
         value: "7"
       - key: CORS_ORIGINS
-        value: '["https://tudominio-frontend.com"]'
+        sync: false
+        value: '["https://lecturas-fronted.vercel.app"]'
       - key: LOG_LEVEL
         value: "INFO"
       - key: LOG_FORMAT
