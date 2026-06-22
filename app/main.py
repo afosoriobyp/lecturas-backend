@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError, SQLAlchemyError
@@ -334,6 +334,49 @@ app.include_router(historial_lecturas_router, prefix=settings.API_PREFIX)
 # ─── Static Files ─────────────────────────────────────
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
+
+# ─── Root — página de bienvenida ──────────────────────
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def root():
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{settings.APP_NAME}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; background: linear-gradient(135deg, #0f4c81, #1a7ab5);
+            color: white; text-align: center; padding: 20px;
+        }}
+        h1 {{ font-size: clamp(1.8rem, 6vw, 3rem); font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }}
+        .version {{ font-size: clamp(0.85rem, 3vw, 1rem); opacity: 0.8; margin-bottom: 32px; }}
+        .links {{ display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px; }}
+        .links a {{
+            display: block; padding: 14px 20px; border-radius: 12px;
+            background: rgba(255,255,255,0.15); backdrop-filter: blur(8px);
+            color: white; text-decoration: none; font-size: 1rem; font-weight: 500;
+            border: 1px solid rgba(255,255,255,0.2); transition: background 0.2s;
+        }}
+        .links a:hover {{ background: rgba(255,255,255,0.25); }}
+        .status {{ margin-top: 32px; font-size: 0.8rem; opacity: 0.6; }}
+    </style>
+</head>
+<body>
+    <h1>{settings.APP_NAME}</h1>
+    <p class="version">v{settings.APP_VERSION}</p>
+    <div class="links">
+        <a href="/docs">Documentación API</a>
+        <a href="/redoc">ReDoc</a>
+        <a href="/health">Estado del servidor</a>
+    </div>
+    <p class="status">API REST — Gestión de lecturas de medidores</p>
+</body>
+</html>"""
 
 
 # ─── Health check ─────────────────────────────────────
