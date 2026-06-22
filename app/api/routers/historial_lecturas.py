@@ -57,6 +57,7 @@ async def list_historial_lecturas(
     nuis: str | None = Query(None, description="Buscar por NIUS/medidor (búsqueda parcial)"),
     ruta_lectura: str | None = Query(None),
     nom_suscriptor: str | None = Query(None),
+    serial_medidor: str | None = Query(None, description="Buscar por serial/número de medidor (búsqueda parcial)"),
     id_predio: str | None = Query(None, description="Buscar por ID de predio (búsqueda parcial)"),
 ):
     count_query = select(func.count(HistorialLectura.id_lectura))
@@ -78,6 +79,9 @@ async def list_historial_lecturas(
     if nom_suscriptor:
         count_query = count_query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
         data_query = data_query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
+    if serial_medidor:
+        count_query = count_query.where(HistorialLectura.serial_medidor.ilike(f"%{serial_medidor}%"))
+        data_query = data_query.where(HistorialLectura.serial_medidor.ilike(f"%{serial_medidor}%"))
 
     total_result = await session.execute(count_query)
     total = total_result.scalar() or 0
@@ -169,6 +173,7 @@ async def export_historial_lecturas(
     formato: str = Query(pattern=r"^(csv|xlsx)$"),
     nuis: str | None = Query(None),
     nom_suscriptor: str | None = Query(None),
+    serial_medidor: str | None = Query(None, description="Buscar por serial/número de medidor (búsqueda parcial)"),
 ):
     query = select(HistorialLectura)
 
@@ -176,6 +181,8 @@ async def export_historial_lecturas(
         query = query.where(HistorialLectura.nuis.ilike(f"%{nuis}%"))
     if nom_suscriptor:
         query = query.where(HistorialLectura.nom_suscriptor.ilike(f"%{nom_suscriptor}%"))
+    if serial_medidor:
+        query = query.where(HistorialLectura.serial_medidor.ilike(f"%{serial_medidor}%"))
 
     query = query.order_by(cast(HistorialLectura.orden_lectura, Integer))
     result = await session.execute(query)
